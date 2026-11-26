@@ -9,4 +9,6 @@ import (
 func init() { panic("this workload must never execute") }
 func Inspect(ctx context.Context, clientset *kubernetes.Clientset) {
 	_, _ = clientset.CoreV1().Pods("demo").List(ctx, metav1.ListOptions{})
+	_, _ = clientset.CoreV1().ConfigMaps("demo").List(ctx, metav1.ListOptions{})
+	_, _ = clientset.CoreV1().ConfigMaps("demo").Get(ctx, "settings", metav1.GetOptions{})
 }

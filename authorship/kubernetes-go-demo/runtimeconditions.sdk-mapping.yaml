@@ -1,0 +1,139 @@
+# Manually authored experimental Go subset; not a finalized cross-language schema.
+apiVersion: runtimeconditions.io/sdk-mapping/v1alpha1
+kind: RuntimeConditionsSDKMapping
+metadata:
+  name: client-go.kubernetes-api
+  version: 0.1.0
+sdk:
+  ecosystem: go
+  package: k8s.io/client-go
+  language: go
+extension:
+  id: https://runtimeconditions.io/extensions/kubernetes/api/0.1.0/runtimeconditions.extension.yaml
+rules:
+- id: core-client
+  match:
+    method:
+      receiver:
+        package: k8s.io/client-go/kubernetes
+        name: Clientset
+        pointer: true
+      name: CoreV1
+      argumentCount: 0
+      root: true
+  produces:
+    surface: core-client
+- id: pods-client
+  match:
+    method:
+      receiver:
+        package: k8s.io/client-go/kubernetes/typed/core/v1
+        name: CoreV1Interface
+      name: Pods
+      argumentCount: 1
+      receiverSurface: core-client
+      arguments:
+      - position: 0
+        kind: nonEmptyString
+  produces:
+    surface: pods-client
+- id: pods-list
+  match:
+    method:
+      receiver:
+        package: k8s.io/client-go/kubernetes/typed/core/v1
+        name: PodInterface
+      name: List
+      argumentCount: 2
+      receiverSurface: pods-client
+      arguments:
+      - position: 1
+        kind: emptyComposite
+        type:
+          package: k8s.io/apimachinery/pkg/apis/meta/v1
+          name: ListOptions
+  condition:
+    writes:
+    - target: kind
+      value: kubernetes.api
+    - target: interface.type
+      value: api
+    - target: interface.operations[]
+      value:
+        verb: list
+        apiGroup: ''
+        apiVersion: v1
+        resource: pods
+        scope: namespaced
+- id: configmaps-client
+  match:
+    method:
+      receiver:
+        package: k8s.io/client-go/kubernetes/typed/core/v1
+        name: CoreV1Interface
+      name: ConfigMaps
+      argumentCount: 1
+      receiverSurface: core-client
+      arguments:
+      - position: 0
+        kind: nonEmptyString
+  produces:
+    surface: configmaps-client
+- id: configmaps-list
+  match:
+    method:
+      receiver:
+        package: k8s.io/client-go/kubernetes/typed/core/v1
+        name: ConfigMapInterface
+      name: List
+      argumentCount: 2
+      receiverSurface: configmaps-client
+      arguments:
+      - position: 1
+        kind: emptyComposite
+        type:
+          package: k8s.io/apimachinery/pkg/apis/meta/v1
+          name: ListOptions
+  condition:
+    writes:
+    - target: kind
+      value: kubernetes.api
+    - target: interface.type
+      value: api
+    - target: interface.operations[]
+      value:
+        verb: list
+        apiGroup: ''
+        apiVersion: v1
+        resource: configmaps
+        scope: namespaced
+- id: configmaps-get
+  match:
+    method:
+      receiver:
+        package: k8s.io/client-go/kubernetes/typed/core/v1
+        name: ConfigMapInterface
+      name: Get
+      argumentCount: 3
+      receiverSurface: configmaps-client
+      arguments:
+      - position: 1
+        kind: nonEmptyString
+      - position: 2
+        kind: emptyComposite
+        type:
+          package: k8s.io/apimachinery/pkg/apis/meta/v1
+          name: GetOptions
+  condition:
+    writes:
+    - target: kind
+      value: kubernetes.api
+    - target: interface.type
+      value: api
+    - target: interface.operations[]
+      value:
+        verb: get
+        apiGroup: ''
+        apiVersion: v1
+        resource: configmaps
+        scope: namespaced

@@ -1,34 +1,112 @@
 {
-  "action": "list",
-  "call": {
-    "Position": "workload.go:11",
-    "Receiver": "*k8s.io/client-go/kubernetes.Clientset",
-    "Method": "PodInterface.List",
-    "Namespace": "demo"
-  },
-  "endpoint": {
-    "method": "get",
-    "path": "/api/v1/namespaces/{namespace}/pods"
-  },
-  "limitations": "source potential demand, not runtime reachability or successful authorization",
-  "operationId": "listCoreV1NamespacedPod",
-  "sdkEvidence": {
-    "gentype/type.go": {
-      "sha256": "ad4ffb92554c8ee971e7e62d54240085495ef3eeede89232319e0dce770e356b",
-      "url": "https://github.com/kubernetes/client-go/blob/877f5359348b5df85619f2aa379abc5bd74bca2d/gentype/type.go"
+  "calls": [
+    {
+      "position": "workload.go:11",
+      "rule": "pods-list",
+      "steps": [
+        {
+          "rule": "core-client",
+          "selection": "(*k8s.io/client-go/kubernetes.Clientset).CoreV1",
+          "surface": "core-client"
+        },
+        {
+          "rule": "pods-client",
+          "selection": "(k8s.io/client-go/kubernetes/typed/core/v1.PodsGetter).Pods",
+          "surface": "pods-client"
+        },
+        {
+          "rule": "pods-list",
+          "selection": "(k8s.io/client-go/kubernetes/typed/core/v1.PodInterface).List"
+        }
+      ],
+      "condition": {
+        "interface": {
+          "operations": [
+            {
+              "apiGroup": "",
+              "apiVersion": "v1",
+              "resource": "pods",
+              "scope": "namespaced",
+              "verb": "list"
+            }
+          ],
+          "type": "api"
+        },
+        "kind": "kubernetes.api"
+      }
     },
-    "kubernetes/clientset.go": {
-      "sha256": "62e01917506b17fdc28356867fa6b71c2658da2b0e27aabdef5967522e0fb2b4",
-      "url": "https://github.com/kubernetes/client-go/blob/877f5359348b5df85619f2aa379abc5bd74bca2d/kubernetes/clientset.go"
+    {
+      "position": "workload.go:12",
+      "rule": "configmaps-list",
+      "steps": [
+        {
+          "rule": "core-client",
+          "selection": "(*k8s.io/client-go/kubernetes.Clientset).CoreV1",
+          "surface": "core-client"
+        },
+        {
+          "rule": "configmaps-client",
+          "selection": "(k8s.io/client-go/kubernetes/typed/core/v1.ConfigMapsGetter).ConfigMaps",
+          "surface": "configmaps-client"
+        },
+        {
+          "rule": "configmaps-list",
+          "selection": "(k8s.io/client-go/kubernetes/typed/core/v1.ConfigMapInterface).List"
+        }
+      ],
+      "condition": {
+        "interface": {
+          "operations": [
+            {
+              "apiGroup": "",
+              "apiVersion": "v1",
+              "resource": "configmaps",
+              "scope": "namespaced",
+              "verb": "list"
+            }
+          ],
+          "type": "api"
+        },
+        "kind": "kubernetes.api"
+      }
     },
-    "kubernetes/typed/core/v1/core_client.go": {
-      "sha256": "d828639f4678723e114b9eb9369eeefbf5a9cbbec64270b5537d09e1be4a3b85",
-      "url": "https://github.com/kubernetes/client-go/blob/877f5359348b5df85619f2aa379abc5bd74bca2d/kubernetes/typed/core/v1/core_client.go"
-    },
-    "kubernetes/typed/core/v1/pod.go": {
-      "sha256": "0e57fc06a47cf3140c8c95f3247108b3e1ee076dc1823c08594b87dfcae97e97",
-      "url": "https://github.com/kubernetes/client-go/blob/877f5359348b5df85619f2aa379abc5bd74bca2d/kubernetes/typed/core/v1/pod.go"
+    {
+      "position": "workload.go:13",
+      "rule": "configmaps-get",
+      "steps": [
+        {
+          "rule": "core-client",
+          "selection": "(*k8s.io/client-go/kubernetes.Clientset).CoreV1",
+          "surface": "core-client"
+        },
+        {
+          "rule": "configmaps-client",
+          "selection": "(k8s.io/client-go/kubernetes/typed/core/v1.ConfigMapsGetter).ConfigMaps",
+          "surface": "configmaps-client"
+        },
+        {
+          "rule": "configmaps-get",
+          "selection": "(k8s.io/client-go/kubernetes/typed/core/v1.ConfigMapInterface).Get"
+        }
+      ],
+      "condition": {
+        "interface": {
+          "operations": [
+            {
+              "apiGroup": "",
+              "apiVersion": "v1",
+              "resource": "configmaps",
+              "scope": "namespaced",
+              "verb": "get"
+            }
+          ],
+          "type": "api"
+        },
+        "kind": "kubernetes.api"
+      }
     }
-  },
+  ],
+  "limitations": "authored rules; direct chains only; potential demand, not runtime execution",
+  "mappingSha256": "7ce290c9f19d5a49e705ba9c2017480e7384bb4733edd6efb78ee4b8e6881792",
   "sdkVersion": "v0.36.2"
 }
