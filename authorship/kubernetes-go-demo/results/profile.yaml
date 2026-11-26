@@ -1,19 +1,37 @@
 apiVersion: runtimeconditions.io/v1alpha1
-kind: RuntimeConditionsProfile
-metadata:
-  name: client-go-pod-list
-workload:
-  uri: https://example.test/client-go-pod-list
-  version: dev
-extensions:
-- https://runtimeconditions.io/extensions/kubernetes/api/0.1.0/runtimeconditions.extension.yaml:0.1.0
 conditions:
-- kind: kubernetes.api
-  interface:
-    type: api
+- interface:
     operations:
-    - verb: list
-      apiGroup: ''
+    - apiGroup: ''
       apiVersion: v1
       resource: pods
       scope: namespaced
+      verb: list
+    type: api
+  kind: kubernetes.api
+- interface:
+    operations:
+    - apiGroup: ''
+      apiVersion: v1
+      resource: configmaps
+      scope: namespaced
+      verb: list
+    type: api
+  kind: kubernetes.api
+- interface:
+    operations:
+    - apiGroup: ''
+      apiVersion: v1
+      resource: configmaps
+      scope: namespaced
+      verb: get
+    type: api
+  kind: kubernetes.api
+extensions:
+- https://runtimeconditions.io/extensions/kubernetes/api/0.1.0/runtimeconditions.extension.yaml
+kind: RuntimeConditionsProfile
+metadata:
+  name: client-go-mapping-records
+workload:
+  uri: https://example.test/client-go-mapping-records
+  version: dev

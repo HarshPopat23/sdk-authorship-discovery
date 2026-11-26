@@ -1,211 +1,365 @@
-// An isolated, deliberately narrow source-to-operation research demo.
+// An isolated consumer for a compact, experimental subset of SDK mapping rules.
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
 	"go/constant"
-	"go/token"
 	"go/types"
-	"golang.org/x/tools/go/packages"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
+
+	"golang.org/x/tools/go/packages"
+	"gopkg.in/yaml.v3"
 )
 
-type Call struct{ Position, Receiver, Method, Namespace string }
-
-func named(t types.Type, pkg, name string) bool {
-	if p, ok := t.(*types.Pointer); ok {
-		t = p.Elem()
-	}
-	n, ok := t.(*types.Named)
-	return ok && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == pkg && n.Obj().Name() == name
+type TypeRef struct {
+	Package string `yaml:"package"`
+	Name    string `yaml:"name"`
+	Pointer bool   `yaml:"pointer,omitempty"`
 }
-func selector(call *ast.CallExpr, info *types.Info, method, pkg, recv string) (*ast.SelectorExpr, bool) {
+type Argument struct {
+	Position int      `yaml:"position"`
+	Kind     string   `yaml:"kind"`
+	Type     *TypeRef `yaml:"type,omitempty"`
+}
+type Method struct {
+	Receiver        TypeRef    `yaml:"receiver"`
+	Name            string     `yaml:"name"`
+	ReceiverSurface string     `yaml:"receiverSurface,omitempty"`
+	Root            bool       `yaml:"root,omitempty"`
+	ArgumentCount   int        `yaml:"argumentCount"`
+	Arguments       []Argument `yaml:"arguments,omitempty"`
+}
+type Match struct {
+	Method Method `yaml:"method"`
+}
+type Produces struct {
+	Surface string `yaml:"surface"`
+}
+type Write struct {
+	Target string `yaml:"target"`
+	Value  any    `yaml:"value"`
+}
+type Condition struct {
+	Writes []Write `yaml:"writes"`
+}
+type Rule struct {
+	ID        string     `yaml:"id"`
+	Match     Match      `yaml:"match"`
+	Produces  *Produces  `yaml:"produces,omitempty"`
+	Condition *Condition `yaml:"condition,omitempty"`
+}
+type Mapping struct {
+	APIVersion string `yaml:"apiVersion"`
+	Kind       string `yaml:"kind"`
+	Metadata   struct {
+		Name    string `yaml:"name"`
+		Version string `yaml:"version"`
+	} `yaml:"metadata"`
+	SDK struct {
+		Ecosystem string `yaml:"ecosystem"`
+		Package   string `yaml:"package"`
+		Language  string `yaml:"language"`
+	} `yaml:"sdk"`
+	Extension struct {
+		ID string `yaml:"id"`
+	} `yaml:"extension"`
+	Rules []Rule `yaml:"rules"`
+}
+
+// Exact tested SDK coordinate belongs to the local validation selection, not a second dependency lock.
+const validatedVersion = "v0.36.2"
+
+func readMapping(path string) (Mapping, []byte, error) {
+	b, e := os.ReadFile(path)
+	if e != nil {
+		return Mapping{}, nil, e
+	}
+	var m Mapping
+	d := yaml.NewDecoder(bytes.NewReader(b))
+	d.KnownFields(true)
+	if e = d.Decode(&m); e != nil {
+		return m, nil, e
+	}
+	var extra any
+	if e = d.Decode(&extra); e != io.EOF {
+		return m, nil, fmt.Errorf("expected one mapping document")
+	}
+	return m, b, validateMapping(m)
+}
+func validateMapping(m Mapping) error {
+	if m.APIVersion != "runtimeconditions.io/sdk-mapping/v1alpha1" || m.Kind != "RuntimeConditionsSDKMapping" || m.Metadata.Name == "" || m.Metadata.Version == "" || m.SDK.Ecosystem != "go" || m.SDK.Language != "go" || m.SDK.Package == "" || m.Extension.ID == "" {
+		return fmt.Errorf("invalid mapping metadata")
+	}
+	ids, surfaces, selectors := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, r := range m.Rules {
+		x := r.Match.Method
+		if r.ID == "" || ids[r.ID] || x.Receiver.Package == "" || x.Receiver.Name == "" || x.Name == "" || x.ArgumentCount < 0 {
+			return fmt.Errorf("invalid or duplicate rule %q", r.ID)
+		}
+		ids[r.ID] = true
+		if (r.Produces == nil) == (r.Condition == nil) {
+			return fmt.Errorf("rule %s needs exactly one output", r.ID)
+		}
+		if x.Root {
+			if x.ReceiverSurface != "" || r.Produces == nil {
+				return fmt.Errorf("invalid root %s", r.ID)
+			}
+		} else if x.ReceiverSurface == "" {
+			return fmt.Errorf("missing receiver surface %s", r.ID)
+		}
+		key := fmt.Sprintf("%v/%s/%s", x.Receiver, x.Name, x.ReceiverSurface)
+		if selectors[key] {
+			return fmt.Errorf("ambiguous selector %s", r.ID)
+		}
+		selectors[key] = true
+		seen := map[int]bool{}
+		for _, a := range x.Arguments {
+			if a.Position < 0 || a.Position >= x.ArgumentCount || seen[a.Position] {
+				return fmt.Errorf("invalid argument position %s", r.ID)
+			}
+			seen[a.Position] = true
+			switch a.Kind {
+			case "nonEmptyString":
+				if a.Type != nil {
+					return fmt.Errorf("unexpected argument type")
+				}
+			case "emptyComposite":
+				if a.Type == nil || a.Type.Name == "" || a.Type.Package == "" {
+					return fmt.Errorf("missing argument type")
+				}
+			default:
+				return fmt.Errorf("unsupported argument constraint %q", a.Kind)
+			}
+		}
+		if r.Produces != nil {
+			s := r.Produces.Surface
+			if s == "" || surfaces[s] {
+				return fmt.Errorf("invalid produced surface %s", r.ID)
+			}
+			surfaces[s] = true
+		}
+		if r.Condition != nil {
+			if _, e := applyWrites(r.Condition.Writes); e != nil {
+				return fmt.Errorf("%s: %w", r.ID, e)
+			}
+		}
+	}
+	for _, r := range m.Rules {
+		if s := r.Match.Method.ReceiverSurface; s != "" && !surfaces[s] {
+			return fmt.Errorf("unknown surface %s", s)
+		}
+	}
+	return nil
+}
+
+// Only the constant-write subset needed by this pilot; extension validity is checked by verify.py.
+func applyWrites(writes []Write) (map[string]any, error) {
+	out := map[string]any{}
+	iface := map[string]any{}
+	seen := map[string]bool{}
+	var ops []any
+	for _, w := range writes {
+		switch w.Target {
+		case "kind", "interface.type":
+			v, ok := w.Value.(string)
+			if !ok || v == "" || seen[w.Target] {
+				return nil, fmt.Errorf("invalid scalar write %s", w.Target)
+			}
+			seen[w.Target] = true
+			if w.Target == "kind" {
+				out["kind"] = v
+			} else {
+				iface["type"] = v
+			}
+		case "interface.operations[]":
+			v, ok := w.Value.(map[string]any)
+			if !ok || len(v) == 0 {
+				return nil, fmt.Errorf("expected operation object")
+			}
+			ops = append(ops, v)
+		default:
+			return nil, fmt.Errorf("unsupported write target %s", w.Target)
+		}
+	}
+	if !seen["kind"] || !seen["interface.type"] || len(ops) == 0 {
+		return nil, fmt.Errorf("incomplete condition writes")
+	}
+	iface["operations"] = ops
+	out["interface"] = iface
+	return out, nil
+}
+func matchesType(t types.Type, r TypeRef) bool {
+	if r.Pointer {
+		p, ok := t.(*types.Pointer)
+		if !ok {
+			return false
+		}
+		t = p.Elem()
+	} else if _, ok := t.(*types.Pointer); ok {
+		return false
+	}
+	n, ok := types.Unalias(t).(*types.Named)
+	return ok && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == r.Package && n.Obj().Name() == r.Name
+}
+
+type Step struct {
+	Rule      string `json:"rule"`
+	Selection string `json:"selection"`
+	Surface   string `json:"surface,omitempty"`
+}
+type Call struct {
+	Position  string         `json:"position"`
+	Rule      string         `json:"rule"`
+	Steps     []Step         `json:"steps"`
+	Condition map[string]any `json:"condition"`
+}
+type evaluation struct {
+	surface   string
+	steps     []Step
+	condition map[string]any
+	rule      string
+}
+
+func evaluate(call *ast.CallExpr, info *types.Info, rules []Rule) (evaluation, bool) {
 	s, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
-		return nil, false
+		return evaluation{}, false
 	}
 	sel := info.Selections[s]
-	if sel == nil || sel.Obj().Name() != method || !named(sel.Recv(), pkg, recv) {
-		return nil, false
+	if sel == nil {
+		return evaluation{}, false
 	}
-	return s, true
+	for _, r := range rules {
+		x := r.Match.Method
+		if sel.Obj().Name() != x.Name || !matchesType(sel.Recv(), x.Receiver) || len(call.Args) != x.ArgumentCount {
+			continue
+		}
+		good := true
+		for _, a := range x.Arguments {
+			arg := call.Args[a.Position]
+			switch a.Kind {
+			case "nonEmptyString":
+				v := info.Types[arg].Value
+				good = v != nil && v.Kind() == constant.String && constant.StringVal(v) != ""
+			case "emptyComposite":
+				lit, ok := arg.(*ast.CompositeLit)
+				good = ok && len(lit.Elts) == 0 && matchesType(info.TypeOf(lit), *a.Type)
+			}
+			if !good {
+				break
+			}
+		}
+		if !good {
+			continue
+		}
+		var steps []Step
+		if !x.Root {
+			parent, ok := s.X.(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			prev, ok := evaluate(parent, info, rules)
+			if !ok || prev.surface != x.ReceiverSurface {
+				continue
+			}
+			steps = prev.steps
+		}
+		step := Step{Rule: r.ID, Selection: sel.Obj().(*types.Func).FullName()}
+		v := evaluation{rule: r.ID}
+		if r.Produces != nil {
+			v.surface = r.Produces.Surface
+			step.Surface = v.surface
+		} else {
+			v.condition, _ = applyWrites(r.Condition.Writes)
+		}
+		v.steps = append(steps, step)
+		return v, true
+	}
+	return evaluation{}, false
 }
-func identify(call *ast.CallExpr, info *types.Info, fs *token.FileSet) (Call, bool) {
-	s, ok := selector(call, info, "List", "k8s.io/client-go/kubernetes/typed/core/v1", "PodInterface")
-	if !ok || len(call.Args) != 2 {
-		return Call{}, false
-	}
-	opts, ok := call.Args[1].(*ast.CompositeLit)
-	if !ok || len(opts.Elts) != 0 || !named(info.TypeOf(opts), "k8s.io/apimachinery/pkg/apis/meta/v1", "ListOptions") {
-		return Call{}, false
-	}
-	pods, ok := s.X.(*ast.CallExpr)
-	if !ok || len(pods.Args) != 1 {
-		return Call{}, false
-	}
-	ps, ok := selector(pods, info, "Pods", "k8s.io/client-go/kubernetes/typed/core/v1", "CoreV1Interface")
-	if !ok {
-		return Call{}, false
-	}
-	core, ok := ps.X.(*ast.CallExpr)
-	if !ok || len(core.Args) != 0 {
-		return Call{}, false
-	}
-	cs, ok := selector(core, info, "CoreV1", "k8s.io/client-go/kubernetes", "Clientset")
-	if !ok {
-		return Call{}, false
-	}
-	if _, ok := info.TypeOf(cs.X).(*types.Pointer); !ok {
-		return Call{}, false
-	}
-	v := info.Types[pods.Args[0]].Value
-	if v == nil || v.Kind() != constant.String {
-		return Call{}, false
-	}
-	ns := constant.StringVal(v)
-	if ns == "" {
-		return Call{}, false
-	}
-	return Call{filepath.Base(fs.Position(call.Pos()).Filename) + ":" + strconv.Itoa(fs.Position(call.Pos()).Line), types.TypeString(info.TypeOf(cs.X), nil), "PodInterface.List", ns}, true
-}
-func analyze(dir string) ([]Call, string, error) {
+func analyze(dir string, m Mapping) ([]Call, error) {
 	cfg := &packages.Config{Dir: dir, Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps | packages.NeedModule}
-	pkgs, err := packages.Load(cfg, ".")
-	if err != nil {
-		return nil, "", err
+	ps, e := packages.Load(cfg, ".")
+	if e != nil {
+		return nil, e
 	}
-	if packages.PrintErrors(pkgs) > 0 {
-		return nil, "", fmt.Errorf("type loading failed")
+	if packages.PrintErrors(ps) > 0 {
+		return nil, fmt.Errorf("type loading failed")
 	}
-	var out []Call
-	root := ""
-	bad := false
-	packages.Visit(pkgs, nil, func(p *packages.Package) {
-		if p.Module != nil && p.Module.Path == "k8s.io/client-go" {
-			if p.Module.Replace != nil || p.Module.Version != "v0.36.2" {
+	bad, found := false, false
+	packages.Visit(ps, nil, func(p *packages.Package) {
+		if p.Module != nil && p.Module.Path == m.SDK.Package {
+			found = true
+			if p.Module.Replace != nil || p.Module.Version != validatedVersion {
 				bad = true
 			}
-			root = p.Module.Dir
 		}
 	})
-	if bad || root == "" {
-		return nil, "", fmt.Errorf("requires unreplaced client-go v0.36.2")
+	if bad {
+		return nil, fmt.Errorf("mapping not validated for selected SDK version or replacement")
 	}
-	for _, p := range pkgs {
+	out := []Call{}
+	if !found {
+		return out, nil
+	}
+	for _, p := range ps {
 		for _, f := range p.Syntax {
 			ast.Inspect(f, func(n ast.Node) bool {
 				if c, ok := n.(*ast.CallExpr); ok {
-					if v, yes := identify(c, p.TypesInfo, p.Fset); yes {
-						out = append(out, v)
+					if v, yes := evaluate(c, p.TypesInfo, m.Rules); yes && v.condition != nil {
+						pos := p.Fset.Position(c.Pos())
+						out = append(out, Call{filepath.Base(pos.Filename) + ":" + strconv.Itoa(pos.Line), v.rule, v.steps, v.condition})
 					}
 				}
 				return true
 			})
 		}
 	}
-	return out, root, nil
+	return out, nil
 }
-
-// Authoring proof: exact pinned SDK implementation, not arbitrary SDK inference.
-func endpoint(root string) (string, map[string]string, error) {
-	files := map[string]string{}
-	for _, p := range []string{"kubernetes/clientset.go", "kubernetes/typed/core/v1/core_client.go", "kubernetes/typed/core/v1/pod.go", "gentype/type.go"} {
-		b, e := os.ReadFile(filepath.Join(root, p))
-		if e != nil {
-			return "", nil, e
-		}
-		files[p] = string(b)
-	}
-	checks := map[string][]string{
-		"kubernetes/clientset.go":                 {"func (c *Clientset) CoreV1() corev1.CoreV1Interface", "return c.coreV1"},
-		"kubernetes/typed/core/v1/core_client.go": {"return newPods(c, namespace)", `config.APIPath = "/api"`},
-		"kubernetes/typed/core/v1/pod.go":         {"gentype.NewClientWithListAndApply", `"pods",`},
-		"gentype/type.go":                         {"func (l *alsoLister[T, L]) List", "l.client.client.Get()", `NamespaceIfScoped(l.client.namespace, l.client.namespace != "")`, "Resource(l.client.resource)", "VersionedParams(&opts, l.client.parameterCodec)"}}
-	for p, frags := range checks {
-		for _, s := range frags {
-			if !strings.Contains(files[p], s) {
-				return "", nil, fmt.Errorf("SDK source evidence changed: %s: %s", p, s)
-			}
-		}
-	}
-	// Read the resource argument from the selected generated constructor, not the application method name.
-	pod := files["kubernetes/typed/core/v1/pod.go"]
-	i := strings.Index(pod, "gentype.NewClientWithListAndApply")
-	arg := pod[i:]
-	i = strings.Index(arg, "(\n")
-	if i < 0 {
-		return "", nil, fmt.Errorf("constructor shape changed")
-	}
-	arg = strings.TrimSpace(arg[i+2:])
-	end := strings.Index(arg, ",")
-	resource, e := strconv.Unquote(arg[:end])
-	if e != nil {
-		return "", nil, e
-	}
-	return "/api/v1/namespaces/{namespace}/" + resource, files, nil
-}
-func run(dir, swagger, out string) error {
-	calls, root, e := analyze(dir)
+func run(dir, mapping, out string) error {
+	m, b, e := readMapping(mapping)
 	if e != nil {
 		return e
 	}
-	if len(calls) != 1 {
-		return fmt.Errorf("expected exactly one supported call, found %d", len(calls))
-	}
-	path, files, e := endpoint(root)
+	calls, e := analyze(dir, m)
 	if e != nil {
 		return e
 	}
-	b, e := os.ReadFile(swagger)
-	if e != nil {
-		return e
+	conditions := []any{}
+	for _, c := range calls {
+		conditions = append(conditions, c.Condition)
 	}
-	var doc struct {
-		Paths map[string]map[string]json.RawMessage `json:"paths"`
-	}
-	if e = json.Unmarshal(b, &doc); e != nil {
-		return e
-	}
-	var op struct {
-		ID     string `json:"operationId"`
-		Action string `json:"x-kubernetes-action"`
-	}
-	if e = json.Unmarshal(doc.Paths[path]["get"], &op); e != nil {
-		return e
-	}
-	if op.ID == "" || op.Action != "list" {
-		return fmt.Errorf("no authoritative list operation")
-	}
-	trace := map[string]any{"call": calls[0], "endpoint": map[string]string{"path": path, "method": "get"}, "operationId": op.ID, "action": op.Action, "sdkVersion": "v0.36.2", "limitations": "source potential demand, not runtime reachability or successful authorization", "sdkEvidence": sourceEvidence(files)}
+	profile := map[string]any{"apiVersion": "runtimeconditions.io/v1alpha1", "kind": "RuntimeConditionsProfile", "metadata": map[string]string{"name": "client-go-mapping-records"}, "workload": map[string]string{"uri": "https://example.test/client-go-mapping-records", "version": "dev"}, "extensions": []string{m.Extension.ID}, "conditions": conditions}
+	trace := map[string]any{"mappingSha256": fmt.Sprintf("%x", sha256.Sum256(b)), "sdkVersion": validatedVersion, "calls": calls, "limitations": "authored rules; direct chains only; potential demand, not runtime execution"}
 	if e = os.MkdirAll(out, 0755); e != nil {
 		return e
 	}
-	b, e = json.MarshalIndent(trace, "", "  ")
-	if e != nil {
-		return e
+	for name, v := range map[string]any{"trace.json": trace, "profile.json": profile} {
+		b, e := json.MarshalIndent(v, "", "  ")
+		if e != nil {
+			return e
+		}
+		if e = os.WriteFile(filepath.Join(out, name), append(b, '\n'), 0644); e != nil {
+			return e
+		}
 	}
-	return os.WriteFile(filepath.Join(out, "trace.json"), append(b, '\n'), 0644)
-}
-func sourceEvidence(files map[string]string) map[string]any {
-	out := map[string]any{}
-	for path, source := range files {
-		out[path] = map[string]string{"sha256": fmt.Sprintf("%x", sha256.Sum256([]byte(source))), "url": "https://github.com/kubernetes/client-go/blob/877f5359348b5df85619f2aa379abc5bd74bca2d/" + path}
-	}
-	return out
+	return nil
 }
 func main() {
 	dir := flag.String("project", "fixture", "workload directory")
-	spec := flag.String("openapi", "inputs/swagger.json", "pinned OpenAPI")
+	mapping := flag.String("mapping", "runtimeconditions.sdk-mapping.yaml", "explicit local mapping")
 	out := flag.String("out", "results", "output directory")
 	flag.Parse()
-	if e := run(*dir, *spec, *out); e != nil {
+	if e := run(*dir, *mapping, *out); e != nil {
 		fmt.Fprintln(os.Stderr, e)
 		os.Exit(1)
 	}

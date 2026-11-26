@@ -1,0 +1,81 @@
+{
+  "sourceSha256": {
+    "kubernetes/clientset.go": "62e01917506b17fdc28356867fa6b71c2658da2b0e27aabdef5967522e0fb2b4",
+    "kubernetes/typed/core/v1/core_client.go": "d828639f4678723e114b9eb9369eeefbf5a9cbbec64270b5537d09e1be4a3b85",
+    "gentype/type.go": "ad4ffb92554c8ee971e7e62d54240085495ef3eeede89232319e0dce770e356b",
+    "kubernetes/typed/core/v1/pod.go": "0e57fc06a47cf3140c8c95f3247108b3e1ee076dc1823c08594b87dfcae97e97",
+    "kubernetes/typed/core/v1/configmap.go": "5a2b150e01f028b586e716656129a531685f330934749c0e4c8229eb80f08755"
+  },
+  "operations": [
+    {
+      "rule": "pods-list",
+      "sdkGetter": "Pods",
+      "constructorResource": "pods",
+      "httpMethod": "GET",
+      "path": "/api/v1/namespaces/{namespace}/pods",
+      "operationId": "listCoreV1NamespacedPod",
+      "condition": {
+        "kind": "kubernetes.api",
+        "interface": {
+          "type": "api",
+          "operations": [
+            {
+              "verb": "list",
+              "apiGroup": "",
+              "apiVersion": "v1",
+              "resource": "pods",
+              "scope": "namespaced"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "rule": "configmaps-list",
+      "sdkGetter": "ConfigMaps",
+      "constructorResource": "configmaps",
+      "httpMethod": "GET",
+      "path": "/api/v1/namespaces/{namespace}/configmaps",
+      "operationId": "listCoreV1NamespacedConfigMap",
+      "condition": {
+        "kind": "kubernetes.api",
+        "interface": {
+          "type": "api",
+          "operations": [
+            {
+              "verb": "list",
+              "apiGroup": "",
+              "apiVersion": "v1",
+              "resource": "configmaps",
+              "scope": "namespaced"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "rule": "configmaps-get",
+      "sdkGetter": "ConfigMaps",
+      "constructorResource": "configmaps",
+      "httpMethod": "GET",
+      "path": "/api/v1/namespaces/{namespace}/configmaps/{name}",
+      "operationId": "readCoreV1NamespacedConfigMap",
+      "condition": {
+        "kind": "kubernetes.api",
+        "interface": {
+          "type": "api",
+          "operations": [
+            {
+              "verb": "get",
+              "apiGroup": "",
+              "apiVersion": "v1",
+              "resource": "configmaps",
+              "scope": "namespaced"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "scope": "reviewed fragments and route composition for client-go v0.36.2 only; not symbolic execution"
+}
