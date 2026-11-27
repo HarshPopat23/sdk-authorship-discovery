@@ -1,0 +1,28 @@
+apiVersion: runtimeconditions.io/v1alpha1
+conditions:
+    - interface:
+        operations:
+            - apiGroup: ""
+              apiVersion: v1
+              resource: pods
+              scope: namespaced
+              verb: list
+        type: api
+      kind: kubernetes.api
+    - interface:
+        operations:
+            - apiGroup: ""
+              apiVersion: v1
+              resource: configmaps
+              scope: namespaced
+              verb: get
+        type: api
+      kind: kubernetes.api
+extensions:
+    - https://runtimeconditions.io/extensions/kubernetes/api/0.1.0/runtimeconditions.extension.yaml
+kind: RuntimeConditionsProfile
+metadata:
+    name: client-go-envtest-observation
+workload:
+    uri: https://example.test/client-go-envtest-observation
+    version: dev
