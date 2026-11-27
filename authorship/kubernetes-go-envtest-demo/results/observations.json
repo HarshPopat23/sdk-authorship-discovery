@@ -1,0 +1,99 @@
+{
+  "kubernetes": "v1.36.2",
+  "clientGo": "v0.36.2",
+  "controllerRuntime": "v0.24.1",
+  "observer": "rest.Config.WrapTransport (before TLS)",
+  "setupTrafficExcluded": true,
+  "openApiSha256": "dcede2063da1d7ad62ecb5af8adb6d7fabd0b52385a7fa0048afb491dac90450",
+  "observations": [
+    {
+      "case": "pods-list",
+      "sdk": {
+        "receiver": {
+          "package": "k8s.io/client-go/kubernetes/typed/core/v1",
+          "name": "PodInterface"
+        },
+        "method": "List",
+        "argumentCount": 2,
+        "options": {
+          "package": "k8s.io/apimachinery/pkg/apis/meta/v1",
+          "name": "ListOptions"
+        },
+        "getter": "Pods"
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/v1/namespaces/demo/pods",
+          "status": 200
+        }
+      ],
+      "sdkError": false
+    },
+    {
+      "case": "configmaps-get",
+      "sdk": {
+        "receiver": {
+          "package": "k8s.io/client-go/kubernetes/typed/core/v1",
+          "name": "ConfigMapInterface"
+        },
+        "method": "Get",
+        "argumentCount": 3,
+        "options": {
+          "package": "k8s.io/apimachinery/pkg/apis/meta/v1",
+          "name": "GetOptions"
+        },
+        "getter": "ConfigMaps"
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/v1/namespaces/demo/configmaps/settings",
+          "status": 200
+        }
+      ],
+      "sdkError": false
+    }
+  ],
+  "matches": [
+    {
+      "path": "/api/v1/namespaces/{namespace}/pods",
+      "method": "GET",
+      "operationId": "listCoreV1NamespacedPod",
+      "action": "list",
+      "resource": "pods"
+    },
+    {
+      "path": "/api/v1/namespaces/{namespace}/configmaps/{name}",
+      "method": "GET",
+      "operationId": "readCoreV1NamespacedConfigMap",
+      "action": "get",
+      "resource": "configmaps"
+    }
+  ],
+  "failedCall": {
+    "case": "configmaps-get-missing",
+    "sdk": {
+      "receiver": {
+        "package": "k8s.io/client-go/kubernetes/typed/core/v1",
+        "name": "ConfigMapInterface"
+      },
+      "method": "Get",
+      "argumentCount": 3,
+      "options": {
+        "package": "k8s.io/apimachinery/pkg/apis/meta/v1",
+        "name": "GetOptions"
+      },
+      "getter": "ConfigMaps"
+    },
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/api/v1/namespaces/demo/configmaps/missing",
+        "status": 404
+      }
+    ],
+    "sdkError": true
+  },
+  "failedCallRejection": "SDK call failed"
+}

@@ -1,0 +1,63 @@
+name: Kubernetes SDK behavioural baseline
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/kubernetes-envtest.yml
+      - authorship/kubernetes-go-envtest-demo/**
+      - authorship/kubernetes-go-demo/**
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/kubernetes-envtest.yml
+      - authorship/kubernetes-go-envtest-demo/**
+      - authorship/kubernetes-go-demo/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  observe-and-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: authorship/kubernetes-go-envtest-demo
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: |
+            authorship/kubernetes-go-envtest-demo/go.sum
+            authorship/kubernetes-go-demo/go.sum
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12.14"
+      - name: Acquire pinned dependencies and inputs
+        run: |
+          python -m pip install --disable-pip-version-check -r ../kubernetes-go-demo/requirements.txt
+          go mod download all
+          (cd ../kubernetes-go-demo && go mod download all)
+          python ../kubernetes-go-demo/setup_inputs.py
+          assets="$(python setup_envtest.py)"
+          printf 'KUBEBUILDER_ASSETS=%s\n' "$assets" >> "$GITHUB_ENV"
+      - name: Unit controls and real envtest integration
+        env:
+          GOTOOLCHAIN: local
+          GOPROXY: "off"
+          GOSUMDB: "off"
+          GOWORK: "off"
+          GOFLAGS: "-mod=readonly -buildvcs=false"
+          CGO_ENABLED: "0"
+          GOPACKAGESDRIVER: "off"
+        run: |
+          go test -count=1 .
+          go test -tags=integration -run TestEnvtest -count=1 -v .
+          go vet -tags=integration .
+          go mod verify
+          python verify.py
