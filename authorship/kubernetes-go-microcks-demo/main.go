@@ -28,15 +28,19 @@ type Request struct {
 	TransportError bool   `json:"transportError"`
 }
 type Recorder struct {
-	Next     http.RoundTripper
-	TraceID  string
-	Requests []Request
+	Next         http.RoundTripper
+	TraceID      string
+	ParentSpanID string
+	Requests     []Request
 }
 
 func (r *Recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 	clone := req.Clone(req.Context())
 	clone.Header = req.Header.Clone()
 	clone.Header.Set("X-Trace-Id", r.TraceID)
+	if r.ParentSpanID != "" {
+		clone.Header.Set("traceparent", "00-"+r.TraceID+"-"+r.ParentSpanID+"-01")
+	}
 	response, err := r.Next.RoundTrip(clone)
 	record := Request{Method: req.Method, Path: req.URL.EscapedPath(), HasQuery: req.URL.RawQuery != "", TransportError: err != nil}
 	if response != nil {
@@ -60,6 +64,10 @@ func invoke(ctx context.Context, host, service, name string) (Invocation, error)
 	if _, err := rand.Read(trace); err != nil {
 		return Invocation{}, err
 	}
+	parentSpan := make([]byte, 8)
+	if _, err := rand.Read(parentSpan); err != nil {
+		return Invocation{}, err
+	}
 	out := Invocation{Case: name, TraceID: hex.EncodeToString(trace)}
 	var recorder *Recorder
 	// Config.Timeout adds a query parameter to Get; bound the call with context instead.
@@ -67,7 +75,7 @@ func invoke(ctx context.Context, host, service, name string) (Invocation, error)
 	defer cancel()
 	config := &rest.Config{Host: strings.TrimRight(host, "/") + "/rest/" + service + "/v1.36.2"}
 	config.WrapTransport = func(next http.RoundTripper) http.RoundTripper {
-		recorder = &Recorder{Next: next, TraceID: out.TraceID}
+		recorder = &Recorder{Next: next, TraceID: out.TraceID, ParentSpanID: hex.EncodeToString(parentSpan)}
 		return recorder
 	}
 	clientset, err := kubernetes.NewForConfig(config)
@@ -99,7 +107,8 @@ func main() {
 	service := flag.String("service", "rc-kubernetes-core", "imported fixture service")
 	name := flag.String("case", "pod-list", "pod-list or configmap-get")
 	flag.Parse()
-	u, err := url.Parse(*host)
+	trimmedHost := strings.TrimRight(*host, "/")
+	u, err := url.Parse(trimmedHost)
 	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
 		fmt.Fprintln(os.Stderr, "host must be http://127.0.0.1:<port>")
 		os.Exit(1)
@@ -108,7 +117,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "unsupported fixture service")
 		os.Exit(1)
 	}
-	result, err := invoke(context.Background(), *host, *service, *name)
+	result, err := invoke(context.Background(), trimmedHost, *service, *name)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

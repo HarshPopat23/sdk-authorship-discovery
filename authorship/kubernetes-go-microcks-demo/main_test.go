@@ -14,9 +14,12 @@ func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 func TestRecorderClonesAndCaptures(t *testing.T) {
 	original, _ := http.NewRequest("GET", "http://127.0.0.1/private?secret=not-recorded", nil)
 	original.Header.Set("Authorization", "not-recorded")
-	recorder := &Recorder{TraceID: "0123456789abcdef0123456789abcdef", Next: transportFunc(func(r *http.Request) (*http.Response, error) {
+	recorder := &Recorder{TraceID: "0123456789abcdef0123456789abcdef", ParentSpanID: "0123456789abcdef", Next: transportFunc(func(r *http.Request) (*http.Response, error) {
 		if r.Header.Get("X-Trace-Id") != "0123456789abcdef0123456789abcdef" {
 			t.Fatal("trace not propagated")
+		}
+		if r.Header.Get("traceparent") != "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01" {
+			t.Fatal("traceparent not propagated")
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("not-recorded"))}, nil
 	})}

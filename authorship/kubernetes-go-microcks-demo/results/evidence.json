@@ -1,8 +1,9 @@
 {
   "clientGo": "v0.36.2",
+  "goVersion": "go1.26.5",
   "microcks": {
-    "image": "quay.io/microcks/microcks-uber@sha256:9866d4737e2081a6349516fad8ca5cf04d2b85d2bd3c4382f64b3d244ecbb649",
-    "version": "1.16.0"
+    "image": "quay.io/microcks/microcks-uber:latest-native",
+    "version": "unknown"
   },
   "observations": [
     {
@@ -25,7 +26,7 @@
       "sdkSuccess": true,
       "serverOperation": "GET /api/v1/namespaces/{namespace}/pods",
       "service": "rc-kubernetes-core",
-      "spanId": "70e1dacd1dc85d14",
+      "spanId": "88103f02e08bc7dc",
       "spans": [
         {
           "attributes": {
@@ -42,11 +43,11 @@
             "method": "GET",
             "path": "/rest/rc-kubernetes-core/v1.36.2/api/v1/namespaces/demo/pods"
           },
-          "spanId": "70e1dacd1dc85d14",
-          "traceId": "51c99480e350dfdb40b39dce12e4366e"
+          "spanId": "88103f02e08bc7dc",
+          "traceId": "82f08ffbd3d98a02a4a4a1e1746e2699"
         }
       ],
-      "traceId": "51c99480e350dfdb40b39dce12e4366e"
+      "traceId": "82f08ffbd3d98a02a4a4a1e1746e2699"
     },
     {
       "case": "configmap-get",
@@ -68,7 +69,7 @@
       "sdkSuccess": true,
       "serverOperation": "GET /api/v1/namespaces/{namespace}/configmaps/{name}",
       "service": "rc-kubernetes-core",
-      "spanId": "42ed2b9454eb5712",
+      "spanId": "a025ca8570099e06",
       "spans": [
         {
           "attributes": {
@@ -85,11 +86,11 @@
             "method": "GET",
             "path": "/rest/rc-kubernetes-core/v1.36.2/api/v1/namespaces/demo/configmaps/settings"
           },
-          "spanId": "42ed2b9454eb5712",
-          "traceId": "58ec8a702a4ab8fa6e63899c84db57e1"
+          "spanId": "a025ca8570099e06",
+          "traceId": "a562652fd7c8d6fecdb8f519d92ac56c"
         }
       ],
-      "traceId": "58ec8a702a4ab8fa6e63899c84db57e1"
+      "traceId": "a562652fd7c8d6fecdb8f519d92ac56c"
     },
     {
       "case": "pod-list",
@@ -111,7 +112,7 @@
       "sdkSuccess": false,
       "serverOperation": "GET /api/v1/namespaces/{namespace}/pods",
       "service": "rc-kubernetes-malformed",
-      "spanId": "1925fcba8195bf09",
+      "spanId": "98ae643122f49242",
       "spans": [
         {
           "attributes": {
@@ -128,11 +129,11 @@
             "method": "GET",
             "path": "/rest/rc-kubernetes-malformed/v1.36.2/api/v1/namespaces/demo/pods"
           },
-          "spanId": "1925fcba8195bf09",
-          "traceId": "93f63cfe199bdcd16ad70a0b45c3660d"
+          "spanId": "98ae643122f49242",
+          "traceId": "e9374e252575e58bb294423e37c683e2"
         }
       ],
-      "traceId": "93f63cfe199bdcd16ad70a0b45c3660d"
+      "traceId": "e9374e252575e58bb294423e37c683e2"
     },
     {
       "case": "configmap-get",
@@ -154,7 +155,7 @@
       "sdkSuccess": false,
       "serverOperation": "GET /api/v1/namespaces/{namespace}/configmaps/{name}",
       "service": "rc-kubernetes-malformed",
-      "spanId": "3bc4922f147a4fc1",
+      "spanId": "bdee888598253c4d",
       "spans": [
         {
           "attributes": {
@@ -171,11 +172,11 @@
             "method": "GET",
             "path": "/rest/rc-kubernetes-malformed/v1.36.2/api/v1/namespaces/demo/configmaps/settings"
           },
-          "spanId": "3bc4922f147a4fc1",
-          "traceId": "71e1bb3663ee5a3821fa1bb150213c61"
+          "spanId": "bdee888598253c4d",
+          "traceId": "006544c20da3e3100ffca6c062ab2d0f"
         }
       ],
-      "traceId": "71e1bb3663ee5a3821fa1bb150213c61"
+      "traceId": "006544c20da3e3100ffca6c062ab2d0f"
     }
   ],
   "openapi": {
@@ -183,6 +184,10 @@
     "pathCount": 113,
     "sha256": "a3cbb14c08e7832e80776e717a5658a178dccb3562cc5c1238193634b6985ff8",
     "url": "https://raw.githubusercontent.com/kubernetes/kubernetes/24e2b02af5543d7910c2bb074c7264df5a8f0467/api/openapi-spec/v3/api__v1_openapi.json"
+  },
+  "platform": {
+    "arch": "amd64",
+    "os": "windows"
   },
   "rejectedControls": [
     {
@@ -201,7 +206,7 @@
         "responseVerified": false,
         "sdkMethod": "k8s.io/client-go/kubernetes/typed/core/v1.PodInterface.List",
         "sdkSuccess": false,
-        "traceId": "5ac0be4dc3e9cf74edd727b9c66b38d3"
+        "traceId": "39bdd66fc4c8f7c664ec9d485acedeb0"
       },
       "reason": "expected one operation span, found 0",
       "requestMatched": false,
@@ -220,8 +225,8 @@
             "method": "GET",
             "path": "/rest/rc-kubernetes-sparse/v1.36.2/api/v1/namespaces/demo/pods"
           },
-          "spanId": "ac193c9bcdbd2516",
-          "traceId": "5ac0be4dc3e9cf74edd727b9c66b38d3"
+          "spanId": "a3997c4a46313d4a",
+          "traceId": "39bdd66fc4c8f7c664ec9d485acedeb0"
         }
       ]
     },
@@ -241,7 +246,7 @@
         "responseVerified": false,
         "sdkMethod": "k8s.io/client-go/kubernetes/typed/core/v1.ConfigMapInterface.Get",
         "sdkSuccess": false,
-        "traceId": "7717ba5ce51290e3e6e2806bcab9dbfe"
+        "traceId": "7ab1342e8d94b1a672e62a2cf0887196"
       },
       "reason": "expected one operation span, found 0",
       "requestMatched": false,
@@ -260,8 +265,8 @@
             "method": "GET",
             "path": "/rest/rc-kubernetes-sparse/v1.36.2/api/v1/namespaces/demo/configmaps/settings"
           },
-          "spanId": "ffee03f08ebb833b",
-          "traceId": "7717ba5ce51290e3e6e2806bcab9dbfe"
+          "spanId": "04532e49ece7af5f",
+          "traceId": "7ab1342e8d94b1a672e62a2cf0887196"
         }
       ]
     },
@@ -286,7 +291,7 @@
         "responseVerified": false,
         "sdkMethod": "raw HTTP control (not an SDK fixture)",
         "sdkSuccess": false,
-        "traceId": "7c348eff03ffcd3c30bb702eef194eeb"
+        "traceId": "acf4830554c3b491528817f993e404e8"
       },
       "reason": "expected one operation span, found 0",
       "spans": [
@@ -304,8 +309,8 @@
             "method": "GET",
             "path": "/rest/rc-kubernetes-core/v1.36.2/api/v1/namespaces/demo/not-a-resource"
           },
-          "spanId": "dd74f5a6687ccc92",
-          "traceId": "7c348eff03ffcd3c30bb702eef194eeb"
+          "spanId": "7993bf6f2d7c1777",
+          "traceId": "acf4830554c3b491528817f993e404e8"
         }
       ]
     },

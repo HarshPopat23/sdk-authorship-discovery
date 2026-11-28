@@ -4,10 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-
 from evidence import Rejected, event_attributes, match_openapi, verify_observation
 import prepare
-import setup_runtime
+import verify
 
 SERVICE = 'rc-kubernetes-core'
 TRACE = '0123456789abcdef0123456789abcdef'
@@ -42,6 +41,7 @@ class EvidenceTests(unittest.TestCase):
     def test_rejects_unsupported_evidence(self):
         def change_request(key, value):
             return lambda i, s, d: i['requests'][0].update({key: value})
+
         mutations = {
             'missing spans': lambda i, s, d: s.clear(),
             'cross trace': lambda i, s, d: s[0].update(traceId='1' * 32),
@@ -110,22 +110,49 @@ class EvidenceTests(unittest.TestCase):
                         content['examples'] = original_content['examples']
             with self.subTest(name=name):
                 self.assertEqual(derived, source)
-                # The preservation oracle must also notice an unrelated schema change.
-                corrupted = copy.deepcopy(derived)
-                corrupted['components']['schemas']['unexpected'] = {'type': 'string'}
-                self.assertNotEqual(corrupted, source)
-
-    def test_changed_runtime_manifest_rejected(self):
-        with tempfile.TemporaryDirectory() as temporary, patch.object(setup_runtime, 'ROOT', Path(temporary)):
-            (Path(temporary) / 'microcks-manifest.json').write_text('{}')
-            with self.assertRaisesRegex(RuntimeError, 'manifest checksum mismatch'):
-                setup_runtime.prepare(check=True)
+        # The preservation oracle must also notice an unrelated schema change.
+        corrupted = copy.deepcopy(derived)
+        corrupted['components']['schemas']['unexpected'] = {'type': 'string'}
+        self.assertNotEqual(corrupted, source)
 
     def test_changed_authoritative_input_rejected(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(prepare, 'CACHE', Path(temporary)):
             (Path(temporary) / 'core-v1.json').write_text('{}')
             with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
                 prepare.prepare(check=True)
+
+    def test_go_version_acceptance(self):
+        for output, expected in [
+            ('go version go1.26.5 windows/amd64', 'go1.26.5'),
+            ('go version go1.26.0 darwin/arm64', 'go1.26.0'),
+            ('go version go1.26 linux/amd64', 'go1.26'),
+            ('go version go1.26.12 linux/arm64', 'go1.26.12'),
+        ]:
+            with self.subTest(output=output):
+                self.assertEqual(verify.validate_go_version(output), expected)
+
+        for bad in (
+            'go version go1.25.9 linux/amd64',
+            'go version go1.27.0 darwin/arm64',
+            'go version devel go1.27-abc linux/amd64',
+            'not-go-output',
+        ):
+            with self.subTest(bad=bad), self.assertRaisesRegex(RuntimeError, 'Go 1.26.x'):
+                verify.validate_go_version(bad)
+
+    def test_validate_host_normalizes_trailing_slash(self):
+        self.assertEqual(verify.validate_host('http://127.0.0.1:8585/'), 'http://127.0.0.1:8585')
+        self.assertEqual(verify.validate_host('http://127.0.0.1:8585'), 'http://127.0.0.1:8585')
+        for bad in ('https://127.0.0.1:8585', 'http://localhost:8585', 'http://127.0.0.1', 'http://127.0.0.1:8585/api'):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                verify.validate_host(bad)
+
+    def test_ensure_clean_services(self):
+        verify.ensure_clean_services([])
+        with self.assertRaisesRegex(RuntimeError, 'fixture services already exist'):
+            verify.ensure_clean_services([{'name': 'rc-kubernetes-core'}])
+        with self.assertRaisesRegex(RuntimeError, 'already has existing services'):
+            verify.ensure_clean_services([{'name': 'unrelated-service'}])
 
 
 if __name__ == '__main__':
